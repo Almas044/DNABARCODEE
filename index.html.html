@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scientific Visualization Sandbox</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Configure Tailwind for custom classes and Inter font -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary': '#4f46e5',
+                        'secondary': '#1f2937',
+                        'tertiary': '#374151',
+                    },
+                },
+                fontFamily: {
+                    sans: ['Inter', 'sans-serif'],
+                },
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        
+        /* Ensure the canvas is responsive within its container */
+        #visualizationCanvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            border-radius: 0.5rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Hide number input spinners */
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { 
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type=number] {
+            -moz-appearance: textfield;
+        }
+
+        /* Scrollbar styling for dark mode */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #1f2937;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <header class="mb-8 text-center">
+            <h1 class="text-4xl font-extrabold text-primary mb-2">SimuLab: Real-Time Pattern Generator</h1>
+            <p class="text-gray-400">Select a scientific simulation mode below to begin.</p>
+        </header>
+
+        <main class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            
+            <!-- Control Panel (Column 1) -->
+            <div id="controlPanel" class="lg:col-span-1 bg-secondary p-6 rounded-xl shadow-2xl border border-gray-700 h-fit sticky top-8">
+                <h2 class="text-2xl font-bold mb-4 border-b border-tertiary pb-2 text-white">Simulation Controls</h2>
+                
+                <!-- Mode Selection -->
+                <div class="mb-6">
+                    <label for="modeSelector" class="block text-sm font-medium mb-2 text-gray-300">Select Mode</label>
+                    <div class="relative">
+                        <select id="modeSelector" onchange="switchMode(this.value)"
+                            class="block w-full py-2 px-3 pr-10 border border-tertiary bg-tertiary rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary appearance-none cursor-pointer transition duration-150 ease-in-out text-white">
+                            <option value="dna">🧬 DNA Barcoding</option>
+                            <option value="fractal">🕸️ Honeycomb Fractal</option>
+                            <option value="silk">🕷️ Spider Silk Pattern</option>
+                        </select>
+                        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
+                            <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dynamic Parameters (Filled by JS) -->
+                <div id="parameterInputs" class="space-y-4">
+                    <!-- Inputs specific to the selected mode will be injected here -->
+                </div>
+            </div>
+
+            <!-- Visualization Panel (Columns 2 & 3) -->
+            <div class="lg:col-span-2 space-y-8">
+                
+                <!-- Canvas Area -->
+                <div class="bg-secondary p-6 rounded-xl shadow-2xl border border-gray-700 h-[60vh] min-h-[400px]">
+                    <h2 class="text-2xl font-bold mb-4 border-b border-tertiary pb-2 text-white" id="canvasTitle">DNA Barcoding Visualization</h2>
+                    <div class="w-full h-full">
+                         <!-- Canvas for drawing patterns -->
+                        <canvas id="visualizationCanvas"></canvas>
+                    </div>
+                </div>
+
+                <!-- Verification Output -->
+                <div class="bg-secondary p-6 rounded-xl shadow-2xl border border-gray-700">
+                    <h2 class="text-2xl font-bold mb-4 border-b border-tertiary pb-2 text-white">Verification & Output</h2>
+                    <div id="verificationOutput" class="p-4 rounded-lg bg-gray-800 text-sm overflow-x-auto whitespace-pre-wrap">
+                        <p class="text-gray-400">Outputs and verification results will appear here in real-time.</p>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        // --- Core Setup ---
+        const canvas = document.getElementById('visualizationCanvas');
+        const ctx = canvas.getContext('2d');
+        const paramInputs = document.getElementById('parameterInputs');
+        const verificationOutput = document.getElementById('verificationOutput');
+        const canvasTitle = document.getElementById('canvasTitle');
+        const modeSelector = document.getElementById('modeSelector');
+
+        // State object to hold parameters for all modes
+        let state = {
+            currentMode: 'dna',
+            dna: {
+                sequence: 'ATCGGCTAAGCAT',
+                A_color: '#EF4444', // Red
+                T_color: '#3B82F6', // Blue
+                C_color: '#10B981', // Green
+                G_color: '#F59E0B'  // Yellow
+            },
+            fractal: {
+                depth: 4,
+                scale: 0.8
+            },
+            silk: {
+                threads: 30,
+                density: 5, // concentric circles
+                radius: 100
+            }
+        };
+
+        // --- Utility Functions ---
+
+        /**
+         * Converts hex to a color object.
+         * @param {string} hex - The hex color string (e.g., #FF0000).
+         * @returns {{r: number, g: number, b: number}} RGB object.
+         */
+        const hexToRgb = (hex) => {
+            const bigint = parseInt(hex.slice(1), 16);
+            return {
+                r: (bigint >> 16) & 255,
+                g: (bigint >> 8) & 255,
+                b: bigint & 255
+            };
+        };
+
+        // Function for exponential backoff (not needed for client-side API, but good practice for external calls)
+        const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+        // --- Rendering Logic for DNA Barcoding ---
+        const renderDNA = () => {
+            const { sequence, A_color, T_color, C_color, G_color } = state.dna;
+            const seq = sequence.toUpperCase().replace(/[^ATCG]/g, '');
+            const colorMap = { A: A_color, T: T_color, C: C_color, G: G_color };
+            
+            // 1. Draw
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const barWidth = canvas.width / seq.length;
+            const barHeight = canvas.height * 0.8;
+            const startY = canvas.height * 0.1;
+
+            seq.split('').forEach((base, index) => {
+                const color = colorMap[base] || '#FFFFFF'; // Default to white for unknown bases (should be filtered)
+                ctx.fillStyle = color;
+                const x = index * barWidth;
+                
+                // Add a small height variation for visual interest (like actual sequencing peaks)
+                const variation = (Math.sin(index * 0.5) * 0.1 + 0.95) * barHeight;
+                
+                ctx.fillRect(x, startY + (barHeight - variation) / 2, barWidth, variation);
+
+                // Draw a thin separator
+                ctx.fillStyle = 'rgba(0,0,0,0.1)';
+                ctx.fillRect(x + barWidth - 1, 0, 1, canvas.height);
+            });
+
+            // 2. Verify (Fictional Species Match)
+            const targetBarcode = 'TAGGCT';
+            const isMatch = seq.includes(targetBarcode);
+            const matchIndex = seq.indexOf(targetBarcode);
+
+            let output = `Sequence: ${seq}\nLength: ${seq.length}\nBase Colors: A(${A_color}), T(${T_color}), C(${C_color}), G(${G_color})\n\n`;
+            
+            if (isMatch) {
+                output += `✅ Verification Success: Target Barcode '${targetBarcode}' Found at position ${matchIndex}. Species Match Confirmed!`;
+            } else {
+                output += `❌ Verification Failure: Target Barcode '${targetBarcode}' Not Found. Unknown or Tampered Sample.`;
+            }
+            verificationOutput.innerHTML = `<pre class="text-white">${output}</pre>`;
+        };
+
+        // --- Rendering Logic for Honeycomb Fractal ---
+        const renderFractal = () => {
+            const { depth, scale } = state.fractal;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#3B82F6'; // Blue
+            ctx.lineWidth = 1;
+            
+            let hexagonCount = 0;
+            const center = { x: canvas.width / 2, y: canvas.height / 2 };
+            const initialRadius = Math.min(canvas.width, canvas.height) / 3;
+
+            /**
+             * Draws a hexagon.
+             * @param {number} x - Center x.
+             * @param {number} y - Center y.
+             * @param {number} r - Radius.
+             */
+            const drawHexagon = (x, y, r) => {
+                ctx.beginPath();
+                for (let i = 0; i < 6; i++) {
+                    const angle = Math.PI / 3 * i;
+                    const px = x + r * Math.cos(angle);
+                    const py = y + r * Math.sin(angle);
+                    if (i === 0) {
+                        ctx.moveTo(px, py);
+                    } else {
+                        ctx.lineTo(px, py);
+                    }
+                }
+                ctx.closePath();
+                ctx.stroke();
+                hexagonCount++;
+            };
+
+            /**
+             * Recursive fractal drawing function.
+             * @param {number} x - Center x.
+             * @param {number} y - Center y.
+             * @param {number} r - Radius.
+             * @param {number} d - Current depth.
+             */
+            const drawFractal = (x, y, r, d) => {
+                if (d === 0) return;
+
+                drawHexagon(x, y, r);
+
+                const newR = r * scale;
+                // Recursive call for the central hexagon
+                drawFractal(x, y, newR, d - 1);
+                
+                // Recursive calls for the 6 surrounding hexagons (nested in corners)
+                for (let i = 0; i < 6; i++) {
+                    const angle = Math.PI / 3 * i + Math.PI / 6; // Offset by 30 deg to point at flat side
+                    const offsetX = r * Math.cos(angle) * (1 - scale);
+                    const offsetY = r * Math.sin(angle) * (1 - scale);
+                    drawFractal(x + offsetX, y + offsetY, newR, d - 1);
+                }
+            };
+            
+            drawFractal(center.x, center.y, initialRadius, depth);
+
+            // 2. Verify (Count elements)
+            const theoreticalCount = (Math.pow(7, depth) - 1) / 6; // Simple formula for 6 branches + 1 center
+            let output = `Fractal Depth: ${depth}\nScale Factor: ${scale.toFixed(2)}\n`;
+            output += `Hexagons Drawn (Actual): ${hexagonCount}\n`;
+            output += `Hexagons (Theoretical max, simplified): ${theoreticalCount.toLocaleString('en-US', {maximumFractionDigits: 0})}\n\n`;
+
+            if (hexagonCount === theoreticalCount) {
+                 output += `✅ Verification Success: Theoretical count matches actual drawn count. Structure Integrity: 100%`;
+            } else if (hexagonCount > 0) {
+                 output += `⚠️ Verification Warning: Actual count (${hexagonCount}) is lower than theoretical (${theoreticalCount}). This is expected for high depths and small scales due to clipping/recursion limits. Integrity: ${(hexagonCount / theoreticalCount * 100).toFixed(2)}%`;
+            } else {
+                 output += `❌ Verification Failure: No hexagons drawn. Check depth and scale parameters.`;
+            }
+            
+            verificationOutput.innerHTML = `<pre class="text-white">${output}</pre>`;
+        };
+
+
+        // --- Rendering Logic for Spider Silk Pattern ---
+        const renderSilk = () => {
+            const { threads, density, radius } = state.silk;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const center = { x: canvas.width / 2, y: canvas.height / 2 };
+            const maxRadius = Math.min(canvas.width, canvas.height) / 2.2;
+            const finalRadius = Math.min(maxRadius, radius * 2);
+
+            ctx.translate(center.x, center.y);
+            
+            // 1. Draw Radial Threads (Spokes)
+            ctx.strokeStyle = '#10B981'; // Green
+            ctx.lineWidth = 1.5;
+            for (let i = 0; i < threads; i++) {
+                const angle = (Math.PI * 2 / threads) * i;
+                const x = finalRadius * Math.cos(angle);
+                const y = finalRadius * Math.sin(angle);
+                
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(x, y);
+                ctx.stroke();
+            }
+
+            // 2. Draw Concentric Circles (Capture Spiral)
+            ctx.strokeStyle = '#EF4444'; // Red
+            ctx.lineWidth = 1;
+            const numCircles = density + 1;
+            for (let i = 1; i <= numCircles; i++) {
+                const r = (finalRadius / numCircles) * i;
+                ctx.beginPath();
+                ctx.arc(0, 0, r, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            // Reset translation
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+            // 3. Verify
+            const totalLines = threads + numCircles;
+            const densityRating = density > 10 ? 'High Security' : density > 5 ? 'Standard' : 'Low Density';
+            
+            let output = `Threads (Radial): ${threads}\nDensity (Concentric Circles): ${density} (${densityRating})\nPattern Radius: ${finalRadius.toFixed(0)}px\nTotal Structural Elements: ${totalLines}\n\n`;
+
+            if (threads < 10 || density < 2) {
+                output += `❌ Validation Failure: Structural integrity is too low. Required ID validation failed. (Too few threads/circles)`;
+            } else {
+                output += `✅ Validation Success: Sufficient density (${densityRating}) and structural integrity for ID Validation (${totalLines} elements).`;
+            }
+            verificationOutput.innerHTML = `<pre class="text-white">${output}</pre>`;
+        };
+
+        // --- Input Generation ---
+
+        /**
+         * Creates an HTML input element based on specification.
+         * @param {string} id - The ID and name for the input.
+         * @param {string} label - The label text.
+         * @param {string} type - 'text', 'number', or 'color'.
+         * @param {string} value - The initial value.
+         * @param {string} [placeholder=''] - Placeholder text.
+         * @param {function} handler - The change/input event handler.
+         * @returns {string} The full HTML string for the input group.
+         */
+        const createInput = (id, label, type, value, placeholder = '', handler) => {
+            const inputType = type === 'color' ? 'color' : (type === 'number' ? 'number' : 'text');
+            const step = type === 'number' ? 'step="1" min="1"' : '';
+            const minAttr = type === 'number' ? `min="${id === 'depth' ? 1 : (id === 'scale' ? 0.1 : 1)}"` : '';
+            const maxAttr = type === 'number' && id === 'threads' ? `max="100"` : '';
+            
+            const commonClasses = "w-full py-2 px-3 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition duration-150 ease-in-out";
+            const colorClass = type === 'color' ? "h-10 cursor-pointer" : "bg-gray-800 text-white";
+
+            return `
+                <div>
+                    <label for="${id}" class="block text-sm font-medium mb-1 text-gray-300">${label}</label>
+                    <input type="${inputType}" id="${id}" value="${value}" placeholder="${placeholder}" 
+                        ${step} ${minAttr} ${maxAttr}
+                        oninput="handleInputChange('${id}', this.value, '${handler}')"
+                        class="${commonClasses} ${colorClass}"
+                    />
+                </div>
+            `;
+        };
+
+        const generateDNAInputs = () => {
+            const { sequence, A_color, T_color, C_color, G_color } = state.dna;
+            return `
+                <h3 class="text-xl font-semibold text-white pt-2">DNA Parameters</h3>
+                ${createInput('sequence', 'DNA Sequence (A, T, C, G)', 'text', sequence, 'e.g., ATCGGCT...', 'dna')}
+                <h4 class="text-lg font-medium text-gray-300 mt-4 mb-2">Base Mappings</h4>
+                <div class="grid grid-cols-2 gap-4">
+                    ${createInput('A_color', 'Adenine (A) Color', 'color', A_color, '', 'dna')}
+                    ${createInput('T_color', 'Thymine (T) Color', 'color', T_color, '', 'dna')}
+                    ${createInput('C_color', 'Cytosine (C) Color', 'color', C_color, '', 'dna')}
+                    ${createInput('G_color', 'Guanine (G) Color', 'color', G_color, '', 'dna')}
+                </div>
+            `;
+        };
+
+        const generateFractalInputs = () => {
+            const { depth, scale } = state.fractal;
+            return `
+                <h3 class="text-xl font-semibold text-white pt-2">Fractal Parameters</h3>
+                ${createInput('depth', 'Recursion Depth (Max ~5)', 'number', depth, 'Max Depth', 'fractal')}
+                <div class="mb-4">
+                    ${createInput('scale', 'Scale Factor (0.1 - 0.9)', 'number', scale, 'Shrinkage Factor', 'fractal')}
+                    <p class="text-xs text-gray-400 mt-1">Smaller scale means smaller nested hexagons.</p>
+                </div>
+            `;
+        };
+
+        const generateSilkInputs = () => {
+            const { threads, density, radius } = state.silk;
+            return `
+                <h3 class="text-xl font-semibold text-white pt-2">Silk Pattern Parameters</h3>
+                ${createInput('threads', 'Radial Threads Count (10-100)', 'number', threads, 'Number of Spokes', 'silk')}
+                ${createInput('density', 'Concentric Circle Density (2-20)', 'number', density, 'Number of Rings', 'silk')}
+                <div class="mb-4">
+                    ${createInput('radius', 'Pattern Size (Radius in px)', 'number', radius, 'Max Radius', 'silk')}
+                    <p class="text-xs text-gray-400 mt-1">Limited by canvas size.</p>
+                </div>
+            `;
+        };
+
+        // --- Main Control Functions ---
+
+        /**
+         * Handles dynamic input changes and updates the state.
+         * @param {string} key - The parameter key (e.g., 'sequence', 'depth').
+         * @param {string} value - The new input value.
+         * @param {string} modeKey - The sub-object key in the state (e.g., 'dna').
+         */
+        const handleInputChange = (key, value, modeKey) => {
+            let parsedValue = value;
+            const inputElement = document.getElementById(key);
+
+            // Convert numbers/floats
+            if (inputElement && inputElement.type === 'number') {
+                parsedValue = parseFloat(value);
+                // Simple boundary clamping for robustness
+                if (key === 'scale' && (parsedValue < 0.1 || parsedValue > 0.9)) {
+                    parsedValue = Math.min(Math.max(parsedValue, 0.1), 0.9);
+                    inputElement.value = parsedValue.toFixed(1);
+                } else if (key === 'depth' && parsedValue > 5) {
+                    parsedValue = 5;
+                    inputElement.value = parsedValue;
+                } else if (key === 'threads' && parsedValue > 100) {
+                    parsedValue = 100;
+                    inputElement.value = parsedValue;
+                }
+            }
+            
+            state[modeKey][key] = parsedValue;
+            render();
+        };
+
+        /**
+         * Switches the simulation mode.
+         * @param {string} mode - The new mode key ('dna', 'fractal', 'silk').
+         */
+        const switchMode = (mode) => {
+            state.currentMode = mode;
+            
+            let htmlInputs = '';
+            let title = '';
+            
+            switch(mode) {
+                case 'dna':
+                    htmlInputs = generateDNAInputs();
+                    title = '🧬 DNA Barcoding Visualization';
+                    break;
+                case 'fractal':
+                    htmlInputs = generateFractalInputs();
+                    title = '🕸️ Honeycomb Fractal Generation';
+                    break;
+                case 'silk':
+                    htmlInputs = generateSilkInputs();
+                    title = '🕷️ Spider Silk Pattern Visualization';
+                    break;
+            }
+
+            paramInputs.innerHTML = htmlInputs;
+            canvasTitle.textContent = title;
+            render();
+        };
+
+        /**
+         * Main rendering dispatcher.
+         */
+        const render = () => {
+            // Ensure canvas is sized correctly before drawing
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            
+            switch(state.currentMode) {
+                case 'dna':
+                    renderDNA();
+                    break;
+                case 'fractal':
+                    renderFractal();
+                    break;
+                case 'silk':
+                    renderSilk();
+                    break;
+            }
+        };
+
+        // --- Initialization ---
+
+        const initApp = () => {
+            // Initial setup: set canvas dimensions and switch to default mode
+            window.addEventListener('resize', render);
+            
+            // Set initial mode from selector state
+            modeSelector.value = state.currentMode;
+            switchMode(state.currentMode); 
+        };
+
+        // Run initialization when the window loads
+        window.onload = initApp;
+
+    </script>
+</body>
+</html>
